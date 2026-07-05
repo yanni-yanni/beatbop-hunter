@@ -72,8 +72,7 @@ loaded so your browser can play it, but the beat-finding part never gets to look
 
 ## Citation
 
-**If you use BeatBop Hunter in your work, a class, or a write-up**, please
-credit it as:
+**If you use BeatBop Hunter in any ways**, please credit it as:
 
 > BeatBop Hunter: an interactive demo of online (real-time) beat tracking.
 > [Your name / project], 2026.
