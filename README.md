@@ -19,7 +19,7 @@ with no idea what's coming next! :)
 - **Track through changes.** Try the tempo-change or accelerando examples to visualize what this means.
 - **Run on your own music.** Drop in any audio file and it does the same thing.
 
-It works great on some audio, while some other is harder (i.e. many tracks and 
+Currently, Beatbop works great on some audio, while some other is harder (i.e. many tracks and 
 multiple instrument simultaneously). Try it out yourself and find its limit!
 
 ## How to open it
