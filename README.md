@@ -1,6 +1,6 @@
 # BeatBop Hunter
 
-**Watch a computer find the beat in music — live, as it listens.**
+**Watch Beatbop find the beat in music in real time!**
 
 BeatBop Hunter is a little interactive demo that listens to audio on the fly 
 and performs beat extraction. It finds where each beat lands, and how fast the
