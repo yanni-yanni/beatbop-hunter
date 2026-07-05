@@ -45,7 +45,7 @@ The button you're playing will be highlighted.
 
 **Stop.** Stops playback.
 
-**beat clicks (checkbox).** Turns the click sound on or off. With it on, you
+**Beat clicks (checkbox).** Turns the click sound on or off. With it on, you
 hear a tick every time a beat is detected. Turn it off to hear the music 
 alone with visual dots only.
 
@@ -59,13 +59,13 @@ click *browse* to pick one. It starts playing right away and gets its own
 button so you can replay it. You can keep dropping in new files anytime, 
 no need to reload the page. (WAV and MP3 work most reliably.)
 
-**The two timelines.**
+**Two visualization timelines.**
 - *Top: Onset-strength envelope:* a live trace of the audio.
 - *Bottom: Detected rhythmic events:* each detected beat as a dot. 
    The dashed line is the playhead (the current moment). Dots should only 
    ever appear at or behind it and never ahead because the tracker can't see the future.
 
-## "listening forward only"
+## More about "Listening forward only"
 
 Detection at any moment uses only what's been heard so far. (The audio file itself is 
 loaded so your browser can play it, but the beat-finding part never gets to look ahead.)
