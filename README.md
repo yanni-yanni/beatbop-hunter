@@ -84,11 +84,9 @@ The beat-tracking ideas here build on standard approaches in music information r
 and rhythm cognition, in particular:
 
 - Large, E. W., & Jones, M. R. (1999). The dynamics of attending: How people
-  track time-varying events. *Psychological Review, 106*(1), 119–159. — the
-  entrainment / dynamic-attending model behind the oscillator tracker.
+  track time-varying events. *Psychological Review, 106*(1), 119–159.
 - Bello, J. P., Daudet, L., Abdallah, S., Duxbury, C., Davies, M., & Sandler,
   M. B. (2005). A tutorial on onset detection in music signals. *IEEE
-  Transactions on Speech and Audio Processing, 13*(5), 1035–1047. — the onset
-  detection methods.
+  Transactions on Speech and Audio Processing, 13*(5), 1035–1047. 
 
 
