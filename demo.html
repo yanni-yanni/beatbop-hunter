@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>BeatBop Hunter: online beat perception</title>
+<style>
+  :root{
+    --ink:#0b1020; --panel:#121a33; --line:#26335c; --dim:#6b7aa8;
+    --wave:#5cc6d0; --beat:#f2b134; --pulse:#ff6b6b; --txt:#e7ecff;
+    --accent:#8a7bff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+    radial-gradient(1200px 600px at 70% -10%, #1a2547 0%, var(--ink) 60%);
+    color:var(--txt);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;
+    min-height:100vh;padding:32px 24px}
+  h1{font:600 13px/1 "IBM Plex Mono",monospace;letter-spacing:.32em;
+    text-transform:uppercase;color:var(--dim);margin:0 0 4px}
+  .lede{font:300 30px/1.15 "IBM Plex Sans",sans-serif;margin:0 0 24px;
+    max-width:640px}
+  .lede b{font-weight:600;color:var(--accent)}
+  .wrap{max-width:960px;margin:0 auto}
+  .bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;margin-bottom:18px;position:relative;z-index:2}
+  select,button{font:inherit;color:var(--txt);background:#1b2749;
+    border:1px solid var(--line);border-radius:9px;padding:9px 14px}
+  select{min-width:190px;cursor:pointer}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:10px;margin-bottom:18px}
+  .grid button{text-align:left;padding:14px;line-height:1.3;font-weight:500;
+    background:var(--panel);border:1px solid var(--line)}
+  .grid button:hover{border-color:var(--accent);background:#161f3d}
+  .grid button.active{border-color:var(--wave);background:#14283a;
+    box-shadow:0 0 0 1px var(--wave) inset}
+  .grid button small{display:block;color:var(--dim);font-weight:400;
+    font-size:12px;margin-top:3px}
+  button{cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#0b1020;font-weight:600}
+  button:disabled{opacity:.4;cursor:default}
+  .stats{display:flex;gap:26px;margin-left:auto;font:600 13px "IBM Plex Mono",monospace}
+  .stats span{color:var(--dim);font-weight:400}
+  .stats b{color:var(--beat)}
+  canvas{width:100%;display:block;background:var(--panel);
+    border:1px solid var(--line);border-radius:14px}
+  .lab{font:600 11px/1 "IBM Plex Mono",monospace;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--dim);margin:18px 2px 8px}
+  .foot{color:var(--dim);font-size:13px;margin-top:20px;max-width:640px}
+  label.chk{display:flex;align-items:center;gap:7px;color:var(--dim);font-size:13px}
+  .drop{border:1.5px dashed var(--line);border-radius:14px;padding:20px;
+    text-align:center;color:var(--dim);margin-bottom:18px;transition:.15s;font-size:14px}
+  .drop.over{border-color:var(--accent);background:#161f3d;color:var(--txt)}
+  .drop.loaded{border-style:solid;border-color:var(--wave);color:var(--txt)}
+  label.pick{color:var(--accent);cursor:pointer;text-decoration:underline}
+  label.pick input{display:none}
+</style>
+
+<div class="wrap">
+  <h1>BeatBop Hunter</h1>
+  <div id="err" style="display:none;background:#3a1420;border:1px solid #ff6b6b;
+    color:#ffd9d9;padding:12px 14px;border-radius:10px;margin-bottom:14px;
+    font:13px/1.5 'IBM Plex Mono',monospace"></div>
+  <p class="lede">Watch a beat tracker <b>find the beats</b>! Audio arrives
+     frame by frame; every dot is placed the instant it's heard, never with
+     knowledge of what comes next.</p>
+
+  <div class="lab">Choose a stimulus, then click to play</div>
+  <div id="stimgrid" class="grid"></div>
+
+  <div class="bar">
+    <button id="stop" disabled>Stop</button>
+    <label class="chk"><input type="checkbox" id="click" checked> beat clicks</label>
+    <div class="stats">
+      <div><span>tempo</span> <b id="bpm">—</b> bpm</div>
+      <div><span>conf</span> <b id="conf">—</b></div>
+      <div><span>onsets</span> <b id="non">0</b></div>
+    </div>
+  </div>
+
+  <div id="drop" class="drop">
+    Or drop an audio file here, or <label class="pick">browse<input type="file" id="file" accept="audio/*"></label>.
+  </div>
+
+  <div class="lab">Onset-strength envelope</div>
+  <canvas id="top" height="150"></canvas>
+  <div class="lab">Detected rhythmic events · online</div>
+  <canvas id="bot" height="120"></canvas>
+
+  <p class="foot">Signal path: amplitude envelope → adaptive threshold → onset
+     detection → IOI tempo estimation. The same pipeline runs in the Python
+     codebase.</p>
+</div>
+
+
+
+
+<script>
+/* Online rhythm pipeline, ported from the Python vertical slice.
+   Strictly causal: each call to push() sees only the current frame. This
+   mirrors core/pipeline + envelope extractor + IOI tempo tracker. */
+
+class EnvelopeExtractor {
+  constructor(sr, {smooth=0.6, thrK=1.5, win=43, delta=1e-3}={}){
+    this.sr=sr; this.smooth=smooth; this.thrK=thrK; this.win=win; this.delta=delta;
+    this.reset();
+  }
+  reset(){ this.hist=[]; this.rising=false; this.last=0; }
+  // frame: {samples:Float32Array, tStart:seconds}
+  process(frame){
+    let s=0; for(let i=0;i<frame.samples.length;i++) s+=frame.samples[i]*frame.samples[i];
+    const rms=Math.sqrt(s/frame.samples.length+1e-12);
+    this.hist.push(rms); if(this.hist.length>this.win) this.hist.shift();
+    const out=[];
+    if(this.hist.length>=Math.min(this.win,8)){
+      const arr=[...this.hist].sort((a,b)=>a-b);
+      const med=arr[arr.length>>1];
+      const dev=arr.map(x=>Math.abs(x-med)).sort((a,b)=>a-b);
+      const mad=dev[dev.length>>1]+1e-9;
+      const thr=med+this.thrK*mad+this.delta;
+      if(rms>thr && rms>=this.last && !this.rising){
+        this.rising=true;
+        out.push({time:frame.tStart, strength:rms-med,
+                  confidence:Math.min(1,(rms-thr)/(thr+1e-9))});
+      } else if(rms<thr){ this.rising=false; }
+    }
+    this.last=rms;
+    return {onsets:out, env:rms};
+  }
+}
+
+class IOITempoTracker {
+  constructor({window=24, lo=50, hi=200}={}){ this.window=window; this.lo=lo; this.hi=hi; this.reset(); }
+  reset(){ this.state={bpm:null, phase:0, conf:0}; }
+  update(times, now){
+    if(times.length<3) return this.state;
+    const recent=times.slice(-this.window);
+    const iois=[]; for(let i=1;i<recent.length;i++){const d=recent[i]-recent[i-1]; if(d>1e-3) iois.push(d);}
+    if(!iois.length) return this.state;
+    const pLo=60/this.hi, pHi=60/this.lo, G=200;
+    const ratios=[0.5,1,1.5,2,3,4], rw=[0.5,1,0.7,0.8,0.5,0.4];
+    let best=0, bestScore=-1;
+    for(let g=0; g<G; g++){
+      const period=pLo+(pHi-pLo)*g/(G-1); let sc=0;
+      for(const x of iois){
+        const r=x/period; let bi=0,bd=1e9;
+        for(let k=0;k<ratios.length;k++){const dd=Math.abs(ratios[k]-r); if(dd<bd){bd=dd;bi=k;}}
+        const err=Math.abs(x-ratios[bi]*period)/period;
+        sc+=rw[bi]*Math.exp(-(err*err)/(2*0.05*0.05));
+      }
+      if(sc>bestScore){bestScore=sc; best=period;}
+    }
+    const bpm=60/best;
+    const phase=(recent[recent.length-1]%best)/best;
+    const conf=Math.max(0,Math.min(1, bestScore/iois.length/1.0 - 0.2));
+    this.state={bpm, phase, conf, period:best};
+    return this.state;
+  }
+}
+
+class RhythmPipeline {
+  constructor(sr, {minIoi=0.12, trackerInterval=0.05}={}){
+    this.sr=sr; this.minIoi=minIoi; this.trackerInterval=trackerInterval;
+    this.ext=new EnvelopeExtractor(sr); this.trk=new IOITempoTracker();
+    this.reset();
+  }
+  reset(){ this.ext.reset(); this.trk.reset(); this.times=[]; this.lastOnset=-1e9;
+    this.lastTrack=-1e9; this.state={bpm:null,phase:0,conf:0}; }
+  push(frame){
+    const {onsets, env}=this.ext.process(frame);
+    let fired=null;
+    for(const o of onsets){
+      if(o.time-this.lastOnset<this.minIoi) continue;
+      this.lastOnset=o.time; this.times.push(o.time); fired=o;
+    }
+    const tEnd=frame.tStart+frame.samples.length/this.sr;
+    if(tEnd-this.lastTrack>=this.trackerInterval){
+      this.lastTrack=tEnd; this.state=this.trk.update(this.times, tEnd);
+    }
+    return {env, onset:fired, state:this.state};
+  }
+}
+
+/* Drives the demo: synthesizes selectable example stimuli, streams them
+   through RhythmPipeline frame-by-frame in real time via ScriptProcessor,
+   plays audio + beat clicks, and draws two synchronized timelines.
+
+   The streaming node only ever hands the pipeline the current block, so the
+   "no access to future audio" rule is enforced by construction. */
+
+// Surface any load-time error visibly instead of failing silently.
+window.addEventListener("error", e=>{
+  const b=document.getElementById("err");
+  if(b){b.style.display="block";
+    b.textContent="Demo error: "+e.message+"  (line "+e.lineno+"). "+
+      "Try a hard refresh; if it persists this message says where it broke.";}
+});
+
+const SR = 22050;
+const HOP = 512;                       // samples per processing frame
+const WINDOW_S = 6;                    // seconds visible in the scroll window
+
+// ---- example stimuli (synthesized in-browser; exact analogues of the
+//      Python synthetic generator) ----
+function click(amp=1, freq=1000, dur=0.03){
+  const n=Math.floor(SR*dur), out=new Float32Array(n);
+  for(let i=0;i<n;i++){const t=i/SR; out[i]=amp*Math.exp(-t*40)*Math.sin(2*Math.PI*freq*t);}
+  return out;
+}
+function render(events, total){
+  const buf=new Float32Array(Math.floor(SR*total)+SR);
+  for(const [t,a] of events){const c=click(a); const i=Math.floor(t*SR);
+    for(let k=0;k<c.length && i+k<buf.length;k++) buf[i+k]+=c[k];}
+  let peak=1e-9; for(const v of buf) peak=Math.max(peak,Math.abs(v));
+  for(let i=0;i<buf.length;i++) buf[i]=buf[i]/peak*0.9;
+  return buf;
+}
+const STIMULI = {
+  "Fixed 120 bpm": ()=>{const p=0.5,ev=[];for(let i=0;i<32;i++)ev.push([i*p,1]);return render(ev,17);},
+  "Fixed 90 bpm": ()=>{const p=60/90,ev=[];for(let i=0;i<24;i++)ev.push([i*p,1]);return render(ev,i2(24,p));},
+  "Tempo change 100→150": ()=>{let t=0,ev=[];for(let i=0;i<32;i++){ev.push([t,1]);t+=60/(i<16?100:150);}return render(ev,t+1);},
+  "With rests (120)": ()=>{const p=0.5,ev=[];for(let i=0;i<32;i++) if((i*7)%4!==2) ev.push([i*p,1]); return render(ev,17);},
+  "Syncopated (120)": ()=>{const p=0.5,ev=[];for(let i=0;i<32;i++){ev.push([i*p,1]); if(i%2===0) ev.push([i*p+p/2,0.7]);}return render(ev,17);},
+  "Accelerando": ()=>{let t=0,ev=[],bpm=80;for(let i=0;i<40;i++){ev.push([t,1]);t+=60/bpm;bpm+=2.2;}return render(ev,t+1);},
+};
+const DESC = {
+  "Fixed 120 bpm":"steady pulse, easy case",
+  "Fixed 90 bpm":"slower steady pulse",
+  "Tempo change 100→150":"step jump — watch it adapt",
+  "With rests (120)":"missing beats",
+  "Syncopated (120)":"off-beat accents",
+  "Accelerando":"continuous speed-up",
+};
+function i2(n,p){return n*p+1;}
+
+// ---- DOM ----
+const $=id=>document.getElementById(id);
+let current=null;                 // name of the active stimulus
+const grid=$("stimgrid");
+function buildGrid(){
+  grid.innerHTML="";
+  Object.keys(STIMULI).forEach(name=>{
+    const b=document.createElement("button");
+    b.dataset.name=name;
+    b.innerHTML=name+(DESC[name]?"<small>"+DESC[name]+"</small>":"");
+    b.onclick=()=>selectAndPlay(name);
+    grid.appendChild(b);
+  });
+}
+function markActive(name){
+  [...grid.children].forEach(b=>b.classList.toggle("active",b.dataset.name===name));
+}
+buildGrid();
+const topCv=$("top"), botCv=$("bot");
+const tctx=topCv.getContext("2d"), bctx=botCv.getContext("2d");
+function fit(c){
+  const r=c.getBoundingClientRect();
+  const cssH=parseInt(getComputedStyle(c).height)||c.height;
+  c.width=Math.max(1,r.width)*devicePixelRatio;
+  c.height=cssH*devicePixelRatio;
+  c.getContext("2d").scale(devicePixelRatio,devicePixelRatio);
+}
+addEventListener("resize",()=>{fit(topCv);fit(botCv);});
+fit(topCv); fit(botCv);
+
+let audioCtx, node, src, pipe, playing=false;
+let envTrace=[], beats=[], t0=0, curT=0;
+
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+function draw(){
+  const W=topCv.getBoundingClientRect().width, Ht=150, Hb=120;
+  const t=curT, x0=Math.max(0,t-WINDOW_S);
+  const X=tt=>(tt-x0)/WINDOW_S*W;
+  // top: envelope
+  tctx.clearRect(0,0,W,Ht);
+  tctx.strokeStyle=css("--wave"); tctx.lineWidth=1.4; tctx.beginPath();
+  let started=false;
+  for(const [tt,e] of envTrace){ if(tt<x0) continue; const x=X(tt), y=Ht-8-e*(Ht-20);
+    if(!started){tctx.moveTo(x,y);started=true;} else tctx.lineTo(x,y);}
+  tctx.stroke();
+  // playhead
+  [[tctx,Ht],[bctx,Hb]].forEach(([c,H])=>{c.strokeStyle=css("--dim");c.setLineDash([4,4]);
+    c.beginPath();c.moveTo(X(t),0);c.lineTo(X(t),H);c.stroke();c.setLineDash([]);});
+  // bottom: detected beats as moving dots
+  bctx.clearRect(0,0,W,Hb);
+  bctx.strokeStyle=css("--line"); bctx.beginPath(); bctx.moveTo(0,Hb/2);bctx.lineTo(W,Hb/2);bctx.stroke();
+  for(const b of beats){ if(b.t<x0) continue; const x=X(b.t);
+    const age=t-b.t, r=Math.max(3,9-age*2);
+    bctx.fillStyle=css("--beat"); bctx.globalAlpha=Math.max(0.25,1-age/WINDOW_S);
+    bctx.beginPath(); bctx.arc(x,Hb/2,r,0,7); bctx.fill(); bctx.globalAlpha=1;
+    bctx.fillStyle=css("--dim"); }
+  if(playing) requestAnimationFrame(draw);
+}
+
+function playClick(){
+  if(!$("click").checked) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.frequency.value=1600; o.connect(g); g.connect(audioCtx.destination);
+  const n=audioCtx.currentTime; g.gain.setValueAtTime(0.25,n);
+  g.gain.exponentialRampToValueAtTime(0.001,n+0.05);
+  o.start(n); o.stop(n+0.06);
+}
+
+async function selectAndPlay(name){
+  if(playing) stop();
+  current=name; markActive(name);
+  await play(name);
+}
+
+async function play(name){
+  const buf=STIMULI[name]();
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+  const ab=audioCtx.createBuffer(1,buf.length,SR); ab.copyToChannel(buf,0);
+  src=audioCtx.createBufferSource(); src.buffer=ab;
+  pipe=new RhythmPipeline(SR); envTrace=[]; beats=[]; curT=0;
+
+  // ScriptProcessor streams the audio in real time; we process each block as
+  // it plays — no look-ahead, exactly like a live input.
+  node=audioCtx.createScriptProcessor(HOP,1,1);
+  let processed=0;
+  node.onaudioprocess=e=>{
+    const inp=e.inputBuffer.getChannelData(0);
+    const frame={samples:inp, tStart:processed/SR}; processed+=inp.length;
+    const {env,onset,state}=pipe.push(frame);
+    curT=frame.tStart;
+    envTrace.push([curT, Math.min(1,env*4)]);
+    if(envTrace.length>2000) envTrace.shift();
+    if(onset){ beats.push({t:onset.time}); playClick(); $("non").textContent=pipe.times.length; }
+    if(state&&state.bpm){ $("bpm").textContent=state.bpm.toFixed(1);
+      $("conf").textContent=(state.conf||0).toFixed(2); }
+    // pass audio through so we hear the original
+    e.outputBuffer.getChannelData(0).set(inp);
+  };
+  src.connect(node); node.connect(audioCtx.destination);
+  src.onended=stop;
+  src.start(); playing=true; $("stop").disabled=false;
+  requestAnimationFrame(draw);
+}
+
+function stop(){
+  playing=false; try{src&&src.stop();}catch(e){}
+  try{node&&node.disconnect();}catch(e){}
+  try{audioCtx&&audioCtx.close();}catch(e){}
+  $("stop").disabled=true; markActive(null);
+}
+
+$("stop").onclick=stop;
+
+// ---- file drop / picker: decode any audio file, resample to SR, and make it
+//      the active stimulus so Play streams it through the same pipeline ----
+const drop=$("drop");
+const DROP_PROMPT='Or drop an audio file here — or <label class="pick">browse<input type="file" id="file" accept="audio/*"></label>. Your file plays through the same online tracker.';
+function resetDrop(note){
+  drop.className="drop"+(note?" loaded":"");
+  drop.innerHTML=(note?note+"<br><br>":"")+DROP_PROMPT;
+  // the file input is recreated each time, so rebind it
+  $("file").addEventListener("change",e=>{const f=e.target.files[0]; if(f) loadFile(f);});
+}
+
+function showErr(msg){
+  const b=$("err"); if(b){b.style.display="block"; b.textContent=msg;}
+  console.error(msg);
+}
+
+async function loadFile(file){
+  try{
+    drop.className="drop"; drop.textContent="Decoding "+file.name+"…";
+    const arr=await file.arrayBuffer();
+    // decode at the file's native rate, then resample ourselves
+    const tmp=new (window.AudioContext||window.webkitAudioContext)();
+    let decoded;
+    try{ decoded=await tmp.decodeAudioData(arr); }
+    finally{ tmp.close(); }
+    const ch=decoded.numberOfChannels, len=decoded.length;
+    let mono=new Float32Array(len);
+    for(let c=0;c<ch;c++){const d=decoded.getChannelData(c);for(let i=0;i<len;i++)mono[i]+=d[i]/ch;}
+    if(decoded.sampleRate!==SR){
+      const ratio=SR/decoded.sampleRate, out=new Float32Array(Math.floor(len*ratio));
+      for(let i=0;i<out.length;i++){const s=i/ratio,j=Math.floor(s),f=s-j;
+        out[i]=(mono[j]||0)*(1-f)+(mono[j+1]||0)*f;}
+      mono=out;
+    }
+    // store this upload under a unique key so multiple files coexist and
+    // re-uploading the same name makes a fresh entry
+    const base="♪ "+file.name;
+    let label=base, dup=2;
+    while(STIMULI[label]) label=base+" ("+(dup++)+")";
+    const thisBuf=mono;                 // capture per-upload, not shared
+    STIMULI[label]=()=>thisBuf; DESC[label]="your file";
+    const b=document.createElement("button");
+    b.dataset.name=label;
+    b.innerHTML=label+"<small>your file · click to replay</small>";
+    b.onclick=()=>selectAndPlay(label);
+    grid.appendChild(b);
+    // keep the drop zone as a persistent upload port; just confirm briefly
+    resetDrop("Added <b>"+file.name+"</b> ("+(thisBuf.length/SR).toFixed(1)+
+      "s), playing now. Drop another file anytime.");
+    $("err").style.display="none";
+    selectAndPlay(label);
+  }catch(err){
+    resetDrop();
+    showErr("Couldn't load \""+file.name+"\": "+err.message+
+      ". Try a .wav or .mp3 file (some formats aren't decodable in-browser).");
+  }
+}
+
+// Prevent the browser from navigating to the file. Must block dragover AND
+// drop at the window level, or the browser opens the file instead.
+["dragenter","dragover"].forEach(ev=>window.addEventListener(ev,e=>{
+  e.preventDefault(); if(e.target.closest&&e.target.closest("#drop")) drop.classList.add("over");
+}));
+window.addEventListener("dragleave",e=>{
+  if(!e.relatedTarget) drop.classList.remove("over");
+});
+window.addEventListener("drop",e=>{
+  e.preventDefault(); drop.classList.remove("over");
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f) loadFile(f);
+});
+$("file").addEventListener("change",e=>{const f=e.target.files[0]; if(f) loadFile(f);});
+
+</script>
