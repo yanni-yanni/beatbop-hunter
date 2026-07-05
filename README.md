@@ -17,7 +17,7 @@ with no idea what's coming next! :)
   Still, it should indirectly offer some information about the performance. 
 - **Show its confidence.** How sure it currently is.
 - **Track through changes.** Try the tempo-change or accelerando examples to visualize what this means.
-- **Run on your own music.** Drop in any audio file and it does the same thing.
+- **Run on your own music.** Drop in any audio file and it does the same thing. If you are not sure where to start, try with the "test.mp3"! It's an original music written by the creator ;) You can access more free music on my webpage: https://yanni-yanni.github.io/
 
 Currently, Beatbop works great on some audio, while some other is harder (i.e. many tracks and 
 multiple instrument simultaneously). Try it out yourself and find its limit!
@@ -64,6 +64,7 @@ no need to reload the page. (WAV and MP3 work most reliably.)
 - *Bottom: Detected rhythmic events:* each detected beat as a dot. 
    The dashed line is the playhead (the current moment). Dots should only 
    ever appear at or behind it and never ahead because the tracker can't see the future.
+- *Disclaimer:* demo version may contain some visualization bugs, but they shouldn't affect the overall performance. 
 
 ## More about "Listening forward only"
 
