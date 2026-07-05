@@ -10,7 +10,7 @@ with no idea what's coming next! :)
 
 ## What it can do
 
-- **Find beats as the music plays.** Every time it hears a beat, a dot appears
+- **Find beats as the music plays.** Every time Beatbop hears a beat, a dot appears
   and makes a click sound.
 - **Estimate the tempo.** It shows a live guess of the speed in BPM (beats per
   minute), it's not "accurate" per se because it's the instantaneous estimate. 
