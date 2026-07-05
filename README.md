@@ -16,7 +16,7 @@ with no idea what's coming next! :)
   minute), it's not "accurate" per se because it's the instantaneous estimate. 
   Still, it should indirectly offer some information about the performance. 
 - **Show its confidence.** How sure it currently is.
-- **Track through changes.** Try the tempo-change or accelerando examples!
+- **Track through changes.** Try the tempo-change or accelerando examples to visualize what this means.
 - **Run on your own music.** Drop in any audio file and it does the same thing.
 
 It works great on some audio, while some other is harder (i.e. many tracks and 
