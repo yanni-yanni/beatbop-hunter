@@ -13,9 +13,9 @@ with no idea what's coming next! :)
 - **Find beats as the music plays.** Every time it hears a beat, a dot appears
   and makes a click sound.
 - **Estimate the tempo.** It shows a live guess of the speed in BPM (beats per
-  minute), it's not "accurate" per se because it offers the instantaneous est. 
+  minute), it's not "accurate" per se because it's the instantaneous estimate. 
   Still, it should indirectly offer some information about the performance. 
-- **Show its confidence.** A number tells you how sure it currently is.
+- **Show its confidence.** How sure it currently is.
 - **Track through changes.** Try the tempo-change or accelerando examples!
 - **Run on your own music.** Drop in any audio file and it does the same thing.
 
