@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>EXTRACT · online multi-band onset extraction</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+.bands{display:flex;flex-direction:column;gap:4px;margin:6px 0 14px}
+.bnd{display:flex;align-items:center;gap:10px;font:10px/1 'IBM Plex Mono',monospace;
+     letter-spacing:.06em;transition:opacity .12s}
+.bnd .nm{width:74px;text-align:right;color:var(--dim2)}
+.bnd .bar{flex:1;height:8px;background:var(--line);border-radius:2px;overflow:hidden}
+.bnd .bar i{display:block;height:100%;width:16%;background:var(--pred);transition:width .3s}
+.bnd .pc{width:34px;color:var(--dim)}
+.bnd.hot .nm{color:var(--heard)}
+.bnd.hot .bar i{background:var(--heard)}
+  :root{
+    /* Palette: "instrument panel at dusk" — deep indigo field, warm brass for
+       what is HEARD (reactive), cool cyan for the extractor's confidence in a
+       band's pulse. This build only ever reacts, so cyan now just means
+       "this band's rhythm is clean," not "the future." */
+    --field:#0a0e1a; --field2:#111830; --panel:#141d38; --panel2:#0f1730;
+    --line:#243357; --line2:#31456f; --dim:#6d7dad; --dim2:#4a577f;
+    --txt:#e9edff; --heard:#f4a63c; --pred:#4fd6e8; --down:#ff5c8a;
+    --ok:#57e39a; --warn:#ffcf5c;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;min-height:100vh;color:var(--txt);
+    background:
+      radial-gradient(1400px 700px at 78% -12%, #182349 0%, var(--field) 58%),
+      var(--field);
+    font:15px/1.55 "IBM Plex Sans",system-ui,-apple-system,sans-serif;
+    padding:34px 22px 60px}
+  .wrap{max-width:1000px;margin:0 auto}
+  .eyebrow{font:600 11px/1 "IBM Plex Mono",monospace;letter-spacing:.34em;
+    text-transform:uppercase;color:var(--dim);margin:0 0 10px;
+    display:flex;align-items:center;gap:12px}
+  .eyebrow::after{content:"";flex:1;height:1px;
+    background:linear-gradient(90deg,var(--line2),transparent)}
+  h1{font:300 40px/1.05 "IBM Plex Sans",sans-serif;margin:0 0 6px;letter-spacing:-.01em}
+  h1 b{font-weight:600}
+  .lede{font:300 18px/1.5 "IBM Plex Sans";color:#c3cbef;max-width:660px;margin:0 0 26px}
+  .lede .h{color:var(--heard);font-weight:500}
+  .lede .p{color:var(--pred);font-weight:500}
+  .lab{font:600 10px/1 "IBM Plex Mono",monospace;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--dim);margin:22px 2px 9px;
+    display:flex;align-items:center;gap:9px}
+  .lab .tag{color:var(--dim2);font-weight:400;letter-spacing:.05em;text-transform:none;
+    font-size:11px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line);border-radius:16px}
+  .bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+    padding:14px 16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));
+    gap:9px;margin-bottom:6px}
+  .grid button{text-align:left;padding:13px 14px;line-height:1.25;font-weight:500;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    color:var(--txt);cursor:pointer;transition:.14s}
+  .grid button small{display:block;color:var(--dim);font-weight:400;
+    font-size:11.5px;margin-top:3px}
+  .grid button:hover{border-color:var(--line2);background:#16203f}
+  .grid button.active{border-color:var(--pred);background:#102434;
+    box-shadow:0 0 0 1px var(--pred) inset,0 6px 26px -14px var(--pred)}
+  select,button.ctl{font:inherit;color:var(--txt);background:#16224a;
+    border:1px solid var(--line);border-radius:10px;padding:9px 13px;cursor:pointer}
+  select{min-width:120px}
+  button.ctl{transition:.14s;font-weight:500}
+  button.ctl:hover{border-color:var(--line2)}
+  button.ctl.primary{background:var(--pred);border-color:var(--pred);color:#04121a;font-weight:600}
+  button.ctl:disabled{opacity:.4;cursor:default}
+  .streams{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:2px 0 4px}
+  .strm{background:var(--panel);border:1px solid var(--line);border-radius:13px;
+    padding:12px 13px 13px;position:relative;overflow:hidden}
+  .strm::before{content:"";position:absolute;inset:0 auto 0 0;width:3px}
+  .strm.music::before{background:var(--dim)}
+  .strm.heard::before{background:var(--heard)}
+  .strm h4{margin:0 0 2px;font:600 12px/1.2 "IBM Plex Mono",monospace;
+    letter-spacing:.04em;display:flex;align-items:center;gap:7px}
+  .strm .sub{color:var(--dim);font-size:11px;margin-bottom:9px;min-height:26px}
+  .strm.music h4{color:var(--txt)} .strm.heard h4{color:var(--heard)}
+  .strm .row{display:flex;align-items:center;gap:8px}
+  .strm input[type=range]{flex:1;height:4px;cursor:pointer}
+  .strm.music input{accent-color:var(--dim)}
+  .strm.heard input{accent-color:var(--heard)}
+  .strm .v{font:600 11px "IBM Plex Mono",monospace;color:var(--txt);
+    min-width:24px;text-align:right}
+  .ms{display:flex;gap:4px;margin-top:9px}
+  .ms button{flex:1;font:600 10px/1 "IBM Plex Mono",monospace;letter-spacing:.08em;
+    padding:6px 0;border-radius:7px;border:1px solid var(--line);background:transparent;
+    color:var(--dim);cursor:pointer;transition:.13s}
+  .ms button:hover{border-color:var(--line2);color:var(--txt)}
+  .ms button.on{color:#04121a;font-weight:700}
+  .strm.music .ms button.on{background:var(--dim);border-color:var(--dim)}
+  .strm.heard .ms button.on{background:var(--heard);border-color:var(--heard)}
+  .strm.solo{box-shadow:0 0 0 1px currentColor inset}
+  .stage{display:grid;grid-template-columns:1fr;gap:14px}
+  canvas{width:100%;display:block;background:var(--panel2);
+    border:1px solid var(--line);border-radius:14px}
+  /* Explicit heights: without them a width:100% canvas stretches to its intrinsic
+     aspect ratio, leaving a large unpainted area below the drawing. */
+  #topCv{height:118px}
+  #botCv{height:72px}
+  .stats{display:flex;gap:22px;flex-wrap:wrap;margin-left:auto;
+    font:600 13px "IBM Plex Mono",monospace}
+  .stats div span{color:var(--dim);font-weight:400;font-size:11px;
+    letter-spacing:.06em;text-transform:uppercase;margin-right:6px}
+  .stats b{color:var(--pred)}
+  .drop{border:1.5px dashed var(--line);border-radius:14px;padding:16px;
+    text-align:center;color:var(--dim);transition:.15s;font-size:13.5px;margin-top:4px}
+  .drop.over{border-color:var(--pred);background:#102434;color:var(--txt)}
+  .drop.loaded{border-style:solid;border-color:var(--ok);color:var(--txt)}
+  .pick{color:var(--pred);cursor:pointer;text-decoration:underline}
+  .pick input{display:none}
+  .foot{color:var(--dim);font-size:13px;margin-top:26px;max-width:720px;line-height:1.6}
+  .foot b{color:#c3cbef;font-weight:500}
+  #err{display:none;background:#2c1420;border:1px solid var(--down);color:#ffd9e2;
+    padding:12px 14px;border-radius:11px;margin-bottom:14px;
+    font:13px/1.5 "IBM Plex Mono",monospace}
+  @media(max-width:720px){
+    .streams{grid-template-columns:1fr}
+    h1{font-size:32px}.stats{width:100%;margin:8px 0 0}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Online audio → onset extraction</div>
+  <h1><b>Extract.</b></h1>
+  <p class="lede">Audio arrives frame by frame.
+    The system <span class="h">hears</span> onsets as they happen: a multi-band
+    complex-domain detector picks attacks out of six frequency ranges, weighs
+    each band by how clean its own pulse is, and fuses them into one event
+    stream. No tempo model, no forecasting, only reaction to incoming events.</p>
+
+  <div id="err"></div>
+
+  <div class="lab">Pick a stimulus <span class="tag">· click to listen</span></div>
+  <div id="stimgrid" class="grid"></div>
+
+  <div class="drop" id="drop">
+    Drop an audio file here, or <label class="pick">browse<input type="file" id="file" accept="audio/*"></label>
+    — it streams through the same causal listener.
+  </div>
+
+  <div class="card bar" style="margin-top:14px">
+    <button class="ctl primary" id="play" disabled>Play</button>
+    <button class="ctl" id="stop" disabled>Stop</button>
+    <label id="modeLab" style="color:var(--dim);font:11px/1 'IBM Plex Mono',monospace;
+      letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="multiTog" style="accent-color:var(--pred)">
+      <span id="modeTxt">single-band</span>
+    </label>
+    <div class="stats">
+      <div><span>onsets</span><b id="cnt">—</b></div>
+      <div><span>rate</span><b id="rate">—</b></div>
+      <div><span>env</span><b id="env">—</b></div>
+    </div>
+  </div>
+
+  <div class="lab">Frequency bands
+    <span class="tag">· bar = reliability weight the fuser gives that band (how periodic its own onsets are) · flash = onset fired there</span></div>
+  <div id="bands" class="bands"></div>
+
+  <div class="lab">Two synchronized streams
+    <span class="tag">· original music · what it heard</span></div>
+  <div class="streams" id="streams"></div>
+
+  <div class="lab">Onset-strength envelope</div>
+  <canvas id="topCv"></canvas>
+  <div class="lab">Heard onsets <span class="tag">· brass = fused/detected onset</span></div>
+  <canvas id="botCv"></canvas>
+
+  <p class="foot">
+    A multi-band complex-domain onset detector accumulates the residual
+    |X − m1·exp(j(2φ1−φ2))| into six frequency bands. Each band runs its
+    own median/MAD picker plus a running-max activity gate, so an idle band
+    can't manufacture onsets from its noise floor. Everything here is purely
+    reactive.
+  </p>
+</div>
+
+<script>
+/* =====================================================================
+   EXTRACT — online multi-band onset extraction.
+
+   Strictly causal: every push() sees only the current frame. No look-ahead
+   anywhere in the pipeline, and — unlike earlier builds of this demo — no
+   prediction layer either. This build stops at extraction: a MULTI-BAND
+   complex-domain onset detector whose residual |X - m1*exp(j*(2*ph1-ph2))|
+   is accumulated into 6 frequency bands instead of one scalar, so a quiet
+   hi-hat is not buried under a loud bass note and an idle band cannot
+   manufacture onsets from its noise floor. A BandBank scores each band's
+   own pulse clarity — purely from that band's own onset timing, with no
+   external tempo estimate to lean on — and the bands are fused by
+   reliability weight into one Event.
+   ===================================================================== */
+
+const SR = 22050, HOP = 512, WINDOW_S = 6;
+
+/* ---- band layout. Edges chosen so that each band can plausibly hold a
+   different rhythmic layer: kick/bass fundamental, bass harmonics + low
+   chords, mid chords, lead/melody, upper melody + snare body, cymbals and
+   chip noise. Roughly log-spaced above 250 Hz. ---- */
+const BAND_HZ = [0, 100, 250, 600, 1500, 4000, 11025];
+const NB = BAND_HZ.length - 1;
+const BAND_NAME = ["0–100", "100–250", "250–600", "600–1.5k", "1.5k–4k", "4k–11k"];
+const FUSE_THR = 0.35;   // reliability mass that must fire for a fused event
+
+/* ---- radix-2 FFT (in-place Cooley–Tukey), n = power of two ---- */
+function fft(re, im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){let bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;
+    if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]];}}
+  for(let len=2;len<=n;len<<=1){
+    const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){let cwr=1,cwi=0;
+      for(let k=0;k<len/2;k++){
+        const ur=re[i+k],ui=im[i+k];
+        const vr=re[i+k+len/2]*cwr-im[i+k+len/2]*cwi;
+        const vi=re[i+k+len/2]*cwi+im[i+k+len/2]*cwr;
+        re[i+k]=ur+vr;im[i+k]=ui+vi;re[i+k+len/2]=ur-vr;im[i+k+len/2]=ui-vi;
+        const ncwr=cwr*wr-cwi*wi;cwi=cwr*wi+cwi*wr;cwr=ncwr;}}}
+}
+
+/* Shared STFT front-end: causal ring buffer + one Hann-windowed spectrum per
+   frame. Tracks spectral CENTROID so downstream code can reason about accent
+   even when loudness is flat. */
+class SpectralFront{
+  constructor(sr,{nFft=1024,thrK=1.5,win=43,gate=0.12,decay=0.9985}={}){
+    this.sr=sr;this.nFft=nFft;this.thrK=thrK;this.win=win;
+    this.gate=gate;this.decay=decay;
+    this.w=new Float32Array(nFft);
+    for(let i=0;i<nFft;i++)this.w[i]=0.5-0.5*Math.cos(2*Math.PI*i/(nFft-1));
+    // bin -> band map, computed once
+    const half=nFft>>1;
+    this.binBand=new Int8Array(half);
+    for(let i=0;i<half;i++){
+      const f=i*sr/nFft; let b=NB-1;
+      for(let k=0;k<NB;k++){ if(f>=BAND_HZ[k]&&f<BAND_HZ[k+1]){b=k;break;} }
+      this.binBand[i]=b;
+    }
+    this.reset();
+  }
+  reset(){this.buf=new Float32Array(this.nFft);this.nov=[];this.rising=false;
+    this.prevMag=null;this.p1=null;this.p2=null;this.centroid=0;
+    this.prevLow=null;this.bassFlux=0;
+    // per-band picker state
+    this.bNov=[];this.bRising=[];this.bMax=[];
+    for(let b=0;b<NB;b++){this.bNov.push([]);this.bRising.push(false);this.bMax.push(0);}}
+  spectrum(frame){
+    const s=frame.samples,k=Math.min(s.length,this.nFft);
+    this.buf.copyWithin(0,k);this.buf.set(s.subarray(s.length-k),this.nFft-k);
+    const re=new Float32Array(this.nFft),im=new Float32Array(this.nFft);
+    for(let i=0;i<this.nFft;i++)re[i]=this.buf[i]*this.w[i];
+    fft(re,im);
+    const half=this.nFft>>1;
+    // spectral centroid (Hz) + bass energy (<~150 Hz) + dominant pitch (argmax bin)
+    let num=0,den=0,low=0,pkMag=0,pkBin=0;
+    const lowBin=Math.max(1,Math.floor(150*this.nFft/this.sr));
+    for(let i=1;i<half;i++){const m=Math.hypot(re[i],im[i]);
+      num+=m*i*this.sr/this.nFft;den+=m; if(i<=lowBin) low+=m;
+      if(m>pkMag){pkMag=m;pkBin=i;}}
+    this.centroid=den>1e-9?num/den:0;
+    this.pitchHz=pkBin*this.sr/this.nFft;              // dominant frequency
+    // positive low-frequency flux = bass onset strength
+    this.bassFlux = this.prevLow!=null?Math.max(0,low-this.prevLow):0;
+    this.prevLow=low;
+    return {re,im,half};
+  }
+  // running median + MAD over a novelty history; returns null until warm
+  _thr(hist,nov){
+    hist.push(nov); if(hist.length>this.win)hist.shift();
+    if(hist.length<8) return null;
+    const a=[...hist].sort((x,y)=>x-y),med=a[a.length>>1];
+    const dev=a.map(x=>Math.abs(x-med)).sort((x,y)=>x-y),mad=dev[dev.length>>1]+1e-9;
+    return {med,mad,thr:med+this.thrK*mad};
+  }
+  // fused (whole-spectrum) picker — used in single-band mode
+  peak(nov,t){
+    const s=this._thr(this.nov,nov); const out=[];
+    if(s){
+      if(nov>s.thr&&!this.rising){this.rising=true;
+        out.push({time:t,strength:nov-s.med,centroid:this.centroid,pitch:this.pitchHz,
+                  confidence:Math.min(1,(nov-s.thr)/(s.thr+1e-9)),source:null,band:-1});}
+      else if(nov<s.thr)this.rising=false;
+    }
+    return out;
+  }
+  /* Per-band picker. Two differences from the fused one that matter:
+     · strength is MAD-normalised, so bands with wildly different absolute
+       energy produce comparable numbers and can be summed;
+     · an activity gate `nov > gate * runningMax(band)` — median/MAD alone is
+       scale-free, so a band containing nothing still finds "peaks" in its own
+       noise. The running max decays slowly (~11 s half-life) so a band that
+       genuinely drops out goes quiet instead of hallucinating. */
+  peakBands(bd,t){
+    const out=[];
+    for(let b=0;b<NB;b++){
+      const v=bd[b];
+      this.bMax[b]=Math.max(v,this.bMax[b]*this.decay);
+      const s=this._thr(this.bNov[b],v);
+      if(!s) continue;
+      if(v>s.thr && v>this.gate*this.bMax[b] && !this.bRising[b]){
+        this.bRising[b]=true;
+        out.push({time:t,band:b,strength:(v-s.med)/s.mad,raw:v-s.med,
+                  centroid:this.centroid,pitch:this.pitchHz,
+                  confidence:Math.min(1,(v-s.thr)/(s.thr+1e-9)),source:null});
+      } else if(v<s.thr) this.bRising[b]=false;
+    }
+    return out;
+  }
+}
+
+class ComplexDomainExtractor extends SpectralFront{
+  constructor(sr,o={}){super(sr,{thrK:2.0,...o});}
+  process(frame){
+    const {re,im,half}=this.spectrum(frame);
+    let dev=0;
+    const bd=new Float64Array(NB);                 // per-band residual
+    const ready=this.p1!=null&&this.p2!=null;
+    // start at bin 1: the DC bin carries no rhythmic information, but a sharp
+    // attack is broadband, so its window leakage lands there and smears into
+    // the lowest band — which then fires on every note in the piece and
+    // destroys the band separation the split exists to provide.
+    if(ready)for(let i=1;i<half;i++){
+      const m1=Math.hypot(this.p1.re[i],this.p1.im[i]);
+      const ph1=Math.atan2(this.p1.im[i],this.p1.re[i]);
+      const ph2=Math.atan2(this.p2.im[i],this.p2.re[i]);
+      const pph=2*ph1-ph2;
+      const r=Math.hypot(re[i]-m1*Math.cos(pph),im[i]-m1*Math.sin(pph));
+      dev+=r; bd[this.binBand[i]]+=r;              // the whole added cost: one add
+    }
+    this.p2=this.p1;this.p1={re:re.slice(0,half),im:im.slice(0,half)};
+    this.envRaw=Math.log1p(dev*0.5);
+    return {onsets:ready?this.peak(dev,frame.tStart):[],
+            bandOnsets:ready?this.peakBands(bd,frame.tStart):[],
+            bandNov:bd,
+            env:Math.min(1,dev/half*2),envRaw:this.envRaw,bassFlux:this.bassFlux,
+            tEnd:frame.tStart+frame.samples.length/this.sr};
+  }
+}
+
+/* =====================================================================
+   BandBank — per-band reliability, entirely self-referential.
+
+   There is no tempo model here to hand this a "consensus period" — this
+   build has no predictor at all — so each band scores itself: it takes the
+   median inter-onset interval of its OWN recent onsets as its candidate
+   period, then measures the circular concentration of those onsets around
+   multiples of that period. A band whose onsets sit on a clean isochronous
+   grid produces one sharp peak and scores high; a band firing at random (or
+   on a rubato line) produces a flat profile and scores near zero.
+
+   The scores are normalised into weights that sum to 1 and smoothed with an
+   EMA, so the fusion stage leans on whichever bands are currently carrying
+   the cleanest pulse — which, as it turns out, is a different set for
+   chiptune than for acoustic recordings.
+   ===================================================================== */
+class BandBank{
+  constructor(){
+    this.hist=[]; for(let b=0;b<NB;b++)this.hist.push([]);
+    this.rel=new Float64Array(NB).fill(1/NB);
+    this.sal=new Float64Array(NB);
+    this.lastEval=-1;
+  }
+  // circular concentration of this band's onsets at period P
+  _conc(h,P){
+    let cr=0,ci=0;
+    for(let k=0;k<h.length;k++){ const a=2*Math.PI*(h[k]/P); cr+=Math.cos(a); ci+=Math.sin(a); }
+    return Math.hypot(cr,ci)/h.length;
+  }
+  // this band's own candidate period (median IOI) and how tightly its onsets
+  // cluster around multiples of it — no outside consensus involved.
+  _selfScore(h){
+    if(h.length<6) return 0;
+    const iois=[];
+    for(let i=1;i<h.length;i++){ const d=h[i]-h[i-1]; if(d>0.05) iois.push(d); }
+    if(iois.length<4) return 0;
+    const s=[...iois].sort((a,b)=>a-b), P=s[s.length>>1];
+    if(!(P>0)) return 0;
+    return Math.pow(this._conc(h,P),3);      // cubed: sharpen the contrast
+  }
+  reset(){ for(let b=0;b<NB;b++){this.hist[b].length=0;this.rel[b]=1/NB;this.sal[b]=0;} this.lastEval=-1; }
+  feed(b,t){ const h=this.hist[b]; h.push(t); while(h.length&&t-h[0]>8)h.shift(); }
+  evaluate(now){
+    if(this.lastEval>=0 && now-this.lastEval<0.5) return;
+    this.lastEval=now;
+    const s=new Float64Array(NB); let tot=0;
+    for(let b=0;b<NB;b++) s[b]=this._selfScore(this.hist[b]);
+    for(let b=0;b<NB;b++) tot+=s[b];
+    let z=0;
+    for(let b=0;b<NB;b++){
+      const target = tot>1e-9 ? s[b]/tot : 1/NB;
+      this.rel[b]=0.85*this.rel[b]+0.15*target;
+      this.sal[b]=s[b]; z+=this.rel[b];
+    }
+    for(let b=0;b<NB;b++) this.rel[b]/=z;
+  }
+}
+
+/* ---- pipeline: extraction + per-band reliability fusion. Strictly causal
+   per frame, and — this build — the whole story. Nothing downstream of an
+   Event: no tempo tracking, no meter, no forecasting. ---- */
+class Pipeline{
+  constructor(sr,mode="multi"){
+    this.sr=sr; this.mode=mode;
+    this.ext=new ComplexDomainExtractor(sr);
+    this.bank=new BandBank();
+  }
+  push(frame){
+    const o=this.ext.process(frame);
+    const tEnd=frame.tStart+frame.samples.length/this.sr;
+    let fired=null;
+    // the band bank always runs, so per-band reliability is observable even
+    // when the fused single-band stream is the one driving the output
+    for(const e of o.bandOnsets) this.bank.feed(e.band,e.time);
+    this.bank.evaluate(tEnd);
+    if(this.mode==="single"){
+      fired=o.onsets.length?o.onsets[0]:null;
+    }else{
+      if(o.bandOnsets.length){
+        // fuse: a band votes with its reliability weight. One trusted band can
+        // carry an event on its own; several untrusted ones must agree.
+        let vote=0,st=0,cent=0,wsum=0,conf=0;
+        for(const e of o.bandOnsets){
+          const r=this.bank.rel[e.band];
+          vote+=r; st+=r*Math.min(4,e.strength);
+          cent+=r*e.centroid; wsum+=r;
+          if(e.confidence>conf) conf=e.confidence;
+        }
+        if(vote>=FUSE_THR){
+          fired={time:o.bandOnsets[0].time, strength:st*NB,
+                 centroid:wsum>0?cent/wsum:0, pitch:o.bandOnsets[0].pitch,
+                 confidence:conf, source:null, vote:vote,
+                 bands:o.bandOnsets.map(e=>e.band)};
+        }
+      }
+    }
+    return {env:o.env, onset:fired, tEnd,
+            bandOnsets:o.bandOnsets, bandNov:o.bandNov, rel:this.bank.rel};
+  }
+}
+
+/* =====================================================================
+   Stimuli — synthesized in-browser. Each is a short causal test of a
+   different onset-extraction challenge.
+   ===================================================================== */
+function clickTone(amp=1,freq=1000,dur=0.03){
+  const n=Math.floor(SR*dur),o=new Float32Array(n);
+  for(let i=0;i<n;i++){const t=i/SR;o[i]=amp*Math.exp(-t*40)*Math.sin(2*Math.PI*freq*t);}
+  return o;
+}
+function render(events,total){
+  const buf=new Float32Array(Math.floor(SR*total)+SR);
+  for(const e of events){
+    const [t,a]=e, f=e[2]||1000;
+    const c=clickTone(a,f); const i=Math.floor(t*SR);
+    for(let k=0;k<c.length&&i+k<buf.length;k++)buf[i+k]+=c[k];
+  }
+  let peak=1e-9;for(const v of buf)peak=Math.max(peak,Math.abs(v));
+  for(let i=0;i<buf.length;i++)buf[i]=buf[i]/peak*0.9;
+  return buf;
+}
+// meter helper: accent downbeats (louder + brighter) every `n` beats
+function metered(bpm,bars,n,extra){
+  const p=60/bpm,ev=[]; let beat=0;
+  for(let b=0;b<bars;b++)for(let i=0;i<n;i++){
+    const t=beat*p, down=i===0;
+    ev.push([t, down?1.0:0.6, down?1400:900]);
+    if(extra) extra(ev,t,p,i,n,b);
+    beat++;
+  }
+  return render(ev, beat*p+1);
+}
+function pitchOnly(bpm=120,nbeats=24){
+  const period=60/bpm,total=nbeats*period,N=Math.floor(SR*total),buf=new Float32Array(N);
+  const notes=[262,330,392,523];
+  for(let i=0;i<nbeats;i++){const f=notes[i%notes.length];
+    const s=Math.floor(i*period*SR),e=Math.min(N,Math.floor((i+1)*period*SR));
+    for(let n=s;n<e;n++){const l=(n-s)/SR;buf[n]=0.9*Math.sin(2*Math.PI*f*l);}}
+  return buf;
+}
+// low sine "bass/kick" hit for grounding meter with a bass cue
+function bassHit(amp,dur=0.18){
+  const n=Math.floor(SR*dur),o=new Float32Array(n);
+  for(let i=0;i<n;i++){const t=i/SR;o[i]=amp*Math.exp(-t*14)*Math.sin(2*Math.PI*55*t);}
+  return o;
+}
+function mixInto(buf,t,samples){const i=Math.floor(t*SR);
+  for(let k=0;k<samples.length&&i+k<buf.length;k++)buf[i+k]+=samples[k];}
+// a groove: drums (kick/snare) + bass on downbeats, optional continuous
+// distractors (a vocal-like formant tone + white-noise bed) to test whether the
+// extractor can pick the drum/bass onsets out of the masking.
+function groove(bpm,bars,n,{distract=false,chords=false}={}){
+  const p=60/bpm,total=bars*n*p+1,buf=new Float32Array(Math.floor(SR*total)+SR);
+  let beat=0;
+  for(let b=0;b<bars;b++)for(let i=0;i<n;i++){
+    const t=beat*p, down=i===0;
+    // kick on downbeat & mid-bar, snare elsewhere
+    mixInto(buf,t, clickTone(down?1.0:0.7, down?900:1500, 0.05));
+    if(down) mixInto(buf,t, bassHit(0.9));
+    if(chords){ // strummed chord = several near-simultaneous onsets (one beat)
+      for(const [dt,f] of [[0,330],[0.012,415],[0.024,494]]) mixInto(buf,t+dt,clickTone(0.4,f,0.04));
+    }
+    beat++;
+  }
+  if(distract){
+    for(let s=0;s<buf.length;s++){const t=s/SR;
+      const vocal=0.16*Math.sin(2*Math.PI*(320+50*Math.sin(2*Math.PI*0.5*t))*t)*(0.5+0.5*Math.sin(2*Math.PI*1.3*t));
+      const noise=(Math.random()*2-1)*0.04;
+      buf[s]+=vocal+noise;
+    }
+  }
+  let pk=1e-9;for(const v of buf)pk=Math.max(pk,Math.abs(v));
+  for(let i=0;i<buf.length;i++)buf[i]=buf[i]/pk*0.9;
+  return buf;
+}
+const STIMULI={
+  "4/4 · 120 bpm":()=>metered(120,10,4),
+  "3/4 waltz · 132":()=>metered(132,12,3),
+  "6/8 · 100":()=>metered(100,8,6),
+  "with rests":()=>metered(120,10,4,(ev,t,p,i)=>{ if(i===2 && Math.random()<0.6) ev.pop(); }),
+  "syncopated":()=>metered(120,10,4,(ev,t,p,i)=>{ if(i%2===0) ev.push([t+p*0.5,0.55,700]); }),
+  "tempo shift 100→150":()=>{let t=0,ev=[];for(let b=0;b<10;b++)for(let i=0;i<4;i++){
+      ev.push([t,i===0?1:0.6,i===0?1400:900]);t+=60/(b<5?100:150);}return render(ev,t+1);},
+  "accelerando":()=>{let t=0,ev=[],bpm=84;for(let b=0;b<12;b++)for(let i=0;i<4;i++){
+      ev.push([t,i===0?1:0.6,i===0?1400:900]);t+=60/bpm;bpm+=1.6;}return render(ev,t+1);},
+  "drums + bass":()=>groove(120,10,4),
+  "chords (multi-note)":()=>groove(116,10,4,{chords:true}),
+  "pitch-only · flat":()=>pitchOnly(120,24),
+};
+const DESC={
+  "4/4 · 120 bpm":"steady — the easy case",
+  "3/4 waltz · 132":"three beats per bar",
+  "6/8 · 100":"compound meter",
+  "with rests":"onsets survive missing notes",
+  "syncopated":"off-beat accents",
+  "tempo shift 100→150":"step change in speed",
+  "accelerando":"continuous speed-up",
+  "drums + bass":"kick/snare + bass energy",
+  "chords (multi-note)":"strums = one event, not several",
+  "pitch-only · flat":"no loudness cue — needs spectral onsets",
+};
+
+/* =====================================================================
+   DEMO DRIVER — DOM, two-stream audio, diagnostics.
+   ===================================================================== */
+window.addEventListener("error",e=>{const b=document.getElementById("err");
+  if(b){b.style.display="block";b.textContent="Error: "+e.message+" (line "+e.lineno+"). Try a hard refresh.";}});
+
+const $=id=>document.getElementById(id);
+
+// ---- stimulus grid ----
+const grid=$("stimgrid");
+let current=null;
+function buildGrid(){
+  grid.innerHTML="";
+  Object.keys(STIMULI).forEach(name=>{
+    const b=document.createElement("button");
+    b.dataset.name=name;
+    b.innerHTML=name+(DESC[name]?"<small>"+DESC[name]+"</small>":"");
+    b.onclick=()=>{ current=name; markActive(name); $("play").disabled=false;
+                    if(!playing) selectAndPlay(name); else selectAndPlay(name); };
+    grid.appendChild(b);
+  });
+}
+function markActive(n){[...grid.children].forEach(b=>b.classList.toggle("active",b.dataset.name===n));}
+buildGrid();
+
+// ---- extraction mode + per-band panel ----
+let MULTI=false;
+const bandsWrap=$("bands");
+const bandFlash=new Float64Array(NB);
+function buildBands(){
+  bandsWrap.innerHTML="";
+  for(let b=0;b<NB;b++){
+    const el=document.createElement("div"); el.className="bnd";
+    el.innerHTML='<span class="nm">'+BAND_NAME[b]+' Hz</span>'+
+                 '<span class="bar"><i></i></span><span class="pc">—</span>';
+    bandsWrap.appendChild(el);
+  }
+}
+buildBands();
+function drawBands(){
+  const rel=pipe?pipe.bank.rel:null;
+  [...bandsWrap.children].forEach((el,b)=>{
+    if(rel){
+      el.querySelector("i").style.width=Math.min(100,rel[b]*200).toFixed(1)+"%";
+      el.querySelector(".pc").textContent=Math.round(rel[b]*100)+"%";
+    }
+    el.classList.toggle("hot",bandFlash[b]>0.35);
+    el.style.opacity=(0.5+0.5*Math.min(1,bandFlash[b]+0.35)).toFixed(2);
+    bandFlash[b]*=0.86;
+  });
+}
+$("multiTog").onchange=e=>{ MULTI=e.target.checked;
+  if(pipe) pipe.mode=MULTI?"multi":"single";
+  $("modeTxt").textContent=MULTI?"multi-band":"single-band"; };
+
+// ---- two audio streams: music / heard ----
+const STREAMS=[
+  {id:"music",label:"original music",sub:"the recording, unmodified",vol:0.75,mute:false,solo:false},
+  {id:"heard",label:"what it heard",sub:"a warm tick on every detected onset (reactive)",vol:0.7,mute:false,solo:false},
+];
+const strmWrap=$("streams");
+function buildStreams(){
+  strmWrap.innerHTML="";
+  STREAMS.forEach((s,i)=>{
+    const el=document.createElement("div");
+    el.className="strm "+s.id; el.dataset.i=i;
+    el.innerHTML=`<h4>${s.label}</h4><div class="sub">${s.sub}</div>
+      <div class="row"><input type="range" min="0" max="100" value="${s.vol*100}">
+        <span class="v">${Math.round(s.vol*100)}</span></div>
+      <div class="ms"><button data-a="mute">MUTE</button><button data-a="solo">SOLO</button></div>`;
+    const range=el.querySelector("input"), v=el.querySelector(".v");
+    range.addEventListener("input",()=>{s.vol=range.value/100;v.textContent=range.value;applyGains();});
+    el.querySelectorAll(".ms button").forEach(btn=>{
+      btn.onclick=()=>{const a=btn.dataset.a;
+        if(a==="mute"){s.mute=!s.mute;btn.classList.toggle("on",s.mute);}
+        else{s.solo=!s.solo;btn.classList.toggle("on",s.solo);}
+        el.classList.toggle("solo",s.solo);
+        applyGains();};
+    });
+    strmWrap.appendChild(el);
+  });
+}
+buildStreams();
+function effVol(s){
+  const anySolo=STREAMS.some(x=>x.solo);
+  if(s.mute) return 0;
+  if(anySolo && !s.solo) return 0;
+  return s.vol;
+}
+let gains={music:null,heard:null};
+function applyGains(){ for(const s of STREAMS){ if(gains[s.id]) gains[s.id].gain.value=effVol(s); } }
+
+// ---- canvases ----
+const topCv=$("topCv"),botCv=$("botCv");
+const tctx=topCv.getContext("2d"),bctx=botCv.getContext("2d");
+function fit(c){const r=c.getBoundingClientRect();
+  c.width=Math.max(1,r.width)*devicePixelRatio;c.height=Math.max(1,r.height)*devicePixelRatio;
+  c.getContext("2d").setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);}
+// CSS-pixel box of a canvas — drawing code sizes itself to this, so the painted
+// area always fills the element exactly.
+const box=c=>{const r=c.getBoundingClientRect();return {W:r.width,H:r.height};};
+function fitAll(){[topCv,botCv].forEach(fit);}
+addEventListener("resize",fitAll); fitAll();
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// ---- runtime state ----
+let audioCtx,node,src,pipe,playing=false;
+let envTrace=[],heardMarks=[],curT=0;
+let onsetCount=0,startWall=0;
+
+// ---- audio ticks ----
+function tick(kind,when){
+  const s=STREAMS.find(x=>x.id===kind); if(!s) return;
+  const g=gains[kind]; if(!g||effVol(s)<=0) return;
+  const o=audioCtx.createOscillator(),env=audioCtx.createGain();
+  const f=1500, dur=0.05, amp=0.3;
+  o.frequency.value=f; o.connect(env); env.connect(g);
+  env.gain.setValueAtTime(amp,when); env.gain.exponentialRampToValueAtTime(0.001,when+dur);
+  o.start(when); o.stop(when+dur+0.01);
+}
+
+async function selectAndPlay(name){ if(playing) stop(); current=name; markActive(name); await play(name); }
+
+async function play(name){
+  const buf=STIMULI[name]?STIMULI[name]():UPLOADS[name]();
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+  const ab=audioCtx.createBuffer(1,buf.length,SR); ab.copyToChannel(buf,0);
+  src=audioCtx.createBufferSource(); src.buffer=ab;
+  pipe=new Pipeline(SR, MULTI?"multi":"single");
+  bandFlash.fill(0);
+  envTrace=[];heardMarks=[];curT=0;onsetCount=0;startWall=0;
+
+  // build gain nodes per stream
+  for(const s of STREAMS){ gains[s.id]=audioCtx.createGain(); gains[s.id].gain.value=effVol(s);
+    gains[s.id].connect(audioCtx.destination); }
+
+  node=audioCtx.createScriptProcessor(HOP,1,1);
+  let processed=0;
+  node.onaudioprocess=e=>{
+    const inp=e.inputBuffer.getChannelData(0);
+    const frame={samples:inp,tStart:processed/SR}; processed+=inp.length;
+    const res=pipe.push(frame);
+    const {env,onset,tEnd}=res;
+    if(res.bandOnsets) for(const be of res.bandOnsets) bandFlash[be.band]=1;
+    curT=tEnd;
+    envTrace.push([curT,env]); if(envTrace.length>2600)envTrace.shift();
+    // reactive audio + mark on heard onset
+    if(onset){ heardMarks.push({t:onset.time}); onsetCount++;
+      tick("heard",audioCtx.currentTime); }
+    // stats
+    $("cnt").textContent=onsetCount;
+    $("rate").textContent=curT>0.5?(onsetCount/curT).toFixed(2)+"/s":"—";
+    $("env").textContent=env!=null?env.toFixed(2):"—";
+    // pass audio through to the music stream
+    e.outputBuffer.getChannelData(0).set(inp);
+  };
+  src.connect(node); node.connect(gains.music);
+  src.onended=stop;
+  src.start(); playing=true; $("stop").disabled=false; $("play").disabled=false;
+  requestAnimationFrame(loop);
+}
+function stop(){ playing=false;
+  try{src&&src.stop();}catch(e){} try{node&&node.disconnect();}catch(e){}
+  try{audioCtx&&audioCtx.close();}catch(e){}
+  gains={music:null,heard:null};
+  $("stop").disabled=true; markActive(null);
+}
+$("stop").onclick=stop;
+$("play").onclick=()=>{ if(current) selectAndPlay(current); };
+
+/* ---- render loop: diagnostics + band panel ---- */
+function loop(){
+  drawDiag(); drawBands();
+  if(playing) requestAnimationFrame(loop);
+}
+
+function drawDiag(){
+  const W=box(topCv).W,Ht=box(topCv).H,Hb=box(botCv).H;
+  const t=curT,x0=Math.max(0,t-WINDOW_S),X=tt=>(tt-x0)/WINDOW_S*W;
+  // top: envelope + grid ticks
+  tctx.clearRect(0,0,W,Ht);
+  tctx.strokeStyle=css("--pred"); tctx.lineWidth=1.4; tctx.beginPath();
+  let started=false;
+  for(const [tt,e] of envTrace){ if(tt<x0)continue; const x=X(tt),y=Ht-10-e*(Ht-26);
+    if(!started){tctx.moveTo(x,y);started=true;}else tctx.lineTo(x,y);}
+  tctx.stroke();
+  // playhead
+  [[tctx,Ht],[bctx,Hb]].forEach(([c,H])=>{c.strokeStyle=css("--dim2");c.setLineDash([4,4]);
+    c.beginPath();c.moveTo(X(t),0);c.lineTo(X(t),H);c.stroke();c.setLineDash([]);});
+  // bottom: heard onsets (brass)
+  bctx.clearRect(0,0,W,Hb);
+  bctx.strokeStyle=css("--line");bctx.beginPath();bctx.moveTo(0,Hb*0.5);bctx.lineTo(W,Hb*0.5);bctx.stroke();
+  for(const b of heardMarks){ if(b.t<x0)continue; const x=X(b.t),age=t-b.t;
+    bctx.fillStyle=css("--heard"); bctx.globalAlpha=Math.max(0.25,1-age/WINDOW_S);
+    bctx.beginPath(); bctx.arc(x,Hb*0.5,Math.max(3,8-age*2),0,7); bctx.fill(); }
+  bctx.globalAlpha=1;
+  // lane label
+  bctx.fillStyle=css("--dim2"); bctx.font='9px "IBM Plex Mono",monospace';
+  bctx.fillText("heard",6,Hb*0.5+3);
+  // trim
+  const cut=x0-1;
+  heardMarks=heardMarks.filter(b=>b.t>cut);
+}
+
+/* ---- file drop / picker ---- */
+const UPLOADS={};
+const drop=$("drop");
+const DROP_PROMPT='Drop an audio file here, or <label class="pick">browse<input type="file" id="file" accept="audio/*"></label> — it streams through the same causal listener.';
+function resetDrop(note){ drop.className="drop"+(note?" loaded":"");
+  drop.innerHTML=(note?note+"<br><br>":"")+DROP_PROMPT;
+  $("file").addEventListener("change",e=>{const f=e.target.files[0];if(f)loadFile(f);}); }
+function showErr(m){const b=$("err");if(b){b.style.display="block";b.textContent=m;}console.error(m);}
+async function loadFile(file){
+  try{
+    drop.className="drop"; drop.textContent="Decoding "+file.name+"…";
+    const arr=await file.arrayBuffer();
+    const tmp=new (window.AudioContext||window.webkitAudioContext)();
+    let dec; try{dec=await tmp.decodeAudioData(arr);}finally{tmp.close();}
+    const ch=dec.numberOfChannels,len=dec.length; let mono=new Float32Array(len);
+    for(let c=0;c<ch;c++){const d=dec.getChannelData(c);for(let i=0;i<len;i++)mono[i]+=d[i]/ch;}
+    if(dec.sampleRate!==SR){const ratio=SR/dec.sampleRate,out=new Float32Array(Math.floor(len*ratio));
+      for(let i=0;i<out.length;i++){const s=i/ratio,j=Math.floor(s),f=s-j;out[i]=(mono[j]||0)*(1-f)+(mono[j+1]||0)*f;}
+      mono=out;}
+    const base="♪ "+file.name; let label=base,dup=2; while(UPLOADS[label])label=base+" ("+(dup++)+")";
+    const thisBuf=mono; UPLOADS[label]=()=>thisBuf;
+    const b=document.createElement("button"); b.dataset.name=label;
+    b.innerHTML=label+"<small>your file · click to replay</small>";
+    b.onclick=()=>{current=label;markActive(label);$("play").disabled=false;selectAndPlay(label);};
+    grid.appendChild(b);
+    resetDrop("Added <b>"+file.name+"</b> ("+(thisBuf.length/SR).toFixed(1)+"s), playing now.");
+    $("err").style.display="none"; current=label; markActive(label); $("play").disabled=false;
+    selectAndPlay(label);
+  }catch(err){ resetDrop(); showErr('Couldn\'t load "'+file.name+'": '+err.message+". Try a .wav or .mp3."); }
+}
+["dragenter","dragover"].forEach(ev=>window.addEventListener(ev,e=>{
+  e.preventDefault(); if(e.target.closest&&e.target.closest("#drop"))drop.classList.add("over");}));
+window.addEventListener("dragleave",e=>{if(!e.relatedTarget)drop.classList.remove("over");});
+window.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("over");
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadFile(f);});
+$("file").addEventListener("change",e=>{const f=e.target.files[0];if(f)loadFile(f);});
+</script>
