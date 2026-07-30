@@ -71,6 +71,9 @@ no need to reload the page. (WAV and MP3 work most reliably.)
 Detection at any moment uses only what's been heard so far. (The audio file itself is 
 loaded so your browser can play it, but the beat-finding part never gets to look ahead.)
 
+## Update: 2026/07/30
+Updated a beta version of multi-band extractor. Feel free to use, compare performance, modify for your own purpose (at your own risk). It should theoretically perform better than the old demo.html version. 
+
 ## Citation
 
 **If you use BeatBop Hunter in any ways**, please credit it as:
