@@ -78,10 +78,8 @@ Updated a beta version of multi-band extractor (not proof-read). Feel free to us
 
 **If you use BeatBop Hunter in any ways**, please credit it as:
 
-> BeatBop Hunter: an interactive demo of online (real-time) beat tracking.
-> [Your name / project], 2026.
-
-*(Replace with your own name and a link once you publish it.)*
+> Wu, Y.: BeatBop Hunter: an interactive demo of online (real-time) beat tracking (2026)
+> https://github.com/yanni-yanni/beatbop-hunter/
 
 The beat-tracking ideas here build on standard approaches in music information retrieval 
 and rhythm cognition, in particular:
