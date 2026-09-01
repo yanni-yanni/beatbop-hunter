@@ -2,8 +2,8 @@
 
 **Watch Beatbop find beats in music in real time!**
 
-BeatBop Hunter is a little interactive demo that listens to audio on the fly 
-and performs beat extraction. It finds where each beat lands, and how fast the
+BeatBop Hunter is an interactive demo that listens to audio on the fly 
+and performs beat extraction. It finds where each beat lands and how fast the
 music is going. It only ever hears the music *up to the current moment*. 
 So you're watching it figure out the beat the same way you would in real time,
 with no idea what's coming next! :)
@@ -13,11 +13,11 @@ with no idea what's coming next! :)
 - **Find beats as the music plays.** Every time Beatbop hears a beat, a dot appears
   and makes a click sound.
 - **Estimate the tempo.** It shows a live guess of the speed in BPM (beats per
-  minute), it's not "accurate" per se because it's the instantaneous estimate. 
-  Still, it should indirectly offer some information about the performance. 
-- **Show its confidence.** How sure it currently is.
+  minute). Caution that it's not "accurate" per se as it's the instantaneous estimate. 
+  Still, the number should indirectly offer some information about the performance. 
+- **Show its confidence.** How certain it currently is about its own estimate.
 - **Track through changes.** Try the tempo-change or accelerando examples to visualize what this means.
-- **Run on your own music.** Drop in any audio file and it does the same thing. If you are not sure where to start, try with the "test.mp3"! It's an original music written by the creator ;) You can access more free music on my webpage: https://yanni-yanni.github.io/
+- **Run on your own music.** Drop in any audio file and it does the same thing. If you are not sure where to start, try with the "test.mp3". It's an original music written by the creator ;) You can access more free music on my webpage: https://yanni-yanni.github.io/
 
 Currently, Beatbop works great on some audio, while some other is harder (i.e. many tracks and 
 multiple instrument simultaneously). Try it out yourself and find its limit!
@@ -72,7 +72,7 @@ Detection at any moment uses only what's been heard so far. (The audio file itse
 loaded so your browser can play it, but the beat-finding part never gets to look ahead.)
 
 ## Update: 2026/07/30
-Updated a beta version of multi-band extractor. Feel free to use, compare performance, or modify for your own purpose (at your own risk). It should theoretically perform better than the old demo.html version. 
+Updated a beta version of multi-band extractor (not proof-read). Feel free to use, compare performance, or modify for your own purpose (at your own risk). It should perform better than the old demo.html version, with more demo modes available too. 
 
 ## Citation
 
