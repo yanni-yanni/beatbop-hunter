@@ -8,6 +8,8 @@ music is going. It only ever hears the music *up to the current moment*.
 So you're watching it figure out the beat the same way you would in real time,
 with no idea what's coming next! :)
 
+Note: It's an active hobby project undergoing development, so contents are subject to change.
+
 ## What it can do
 
 - **Find beats as the music plays.** Every time Beatbop hears a beat, a dot appears
